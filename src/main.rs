@@ -3,44 +3,62 @@ use chrono::Duration;
 use ::egui::Context;
 //use ::egui::mutex::Mutex;
 use rand::Rng;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::thread;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread::spawn;
 
 mod vec;
 use crate::vec::Vec3;
 
 
-#[derive(Default)]
-struct MyInner { color: Vec3 }
-struct My { inner: Arc<Mutex<MyInner>> }
 
-#[derive(Default)]
+//#[derive(Default)]
+#[derive(Debug)]
 struct MyApp {
     pixels: std::vec::Vec<u8>,
     texture: Option<((usize, usize), egui::TextureId)>,
     gamma: i32,
     var2: f32,
     calculating: bool,
-    inner: Arc<Mutex<MyInner>>,
-    // name: String,
-    // age: u32,
+    tx: std::sync::mpsc::Sender<(usize, usize, Vec3)>,
+    rx: std::sync::mpsc::Receiver<(usize, usize, Vec3)>,
 }
 
+impl Default for MyApp {
+    fn default() -> Self {
+        Self {
+            //Dont know how to remove these errors..
+            pixels: vec![0],
+            texture: Option<((1, 1), eframe::egui::TextureId)>,
+            gamma: 100,
+            var2: 0.0,
+            calculating: false,
+            tx: Sender<(0, 0, Vec3{x:0.0, y:0.0, z:0.0})>,
+            rx: std::sync::mpsc::Receiver(0, 0, Vec3{x:0.0, y:0.0, z:0.0}),
+        }
+    }
+}
 
 fn calculation(
     x: usize,
     y: usize,
     size: (usize, usize),
-) -> Vec3 {
-    return Vec3{x:x as f32/(size.0 as f32)*255.0, y:y as f32/(size.1 as f32)*255.0, z:0.0};
+) -> (usize, usize, Vec3) {
+    let duration = Duration::seconds(2)
+        .to_std()
+        .expect("What is this text?");
+    thread::sleep(duration);
+    return (x, y, Vec3{x:x as f32/(size.0 as f32)*255.0, y:y as f32/(size.1 as f32)*255.0, z:0.0});
 }
 
 
 impl epi::App for MyApp {
     fn name(&self) -> &str {
-        "Actual_Test"
+        "Gui_Test"
     }
 
     fn setup(
@@ -72,33 +90,39 @@ impl epi::App for MyApp {
         self.texture = Some((size, texture));
         self.gamma = 1;
         self.var2 = 2.0;
-
-        // let (tx, rx) = channel();
-        // for i in 0..10 {
-        //     let tx = tx.clone();
-        //     thread::spawn(move|| {
-        //         tx.send(i).unwrap();
-        //     });
-        // }
         
-        // for _ in 0..10 {
-        //     let j = rx.recv().unwrap();
-        //     assert!(0 <= j && j < 10);
-        //     println!("{:?}",j)
-        // }
-
-
-
+        (self.tx, self.rx) = mpsc::channel();
+        
+        thread::spawn(move || {
+            loop {
+                match self.rx.try_recv() {
+                    Ok(result) => {
+                        //let result: (usize, usize, Vec3) = result;
+                        let x = result.0;
+                        let y = result.1;
+                        let color = result.2;
+                        self.pixels[(4*x+y*500*4+0) as usize] = color.x as u8;
+                        self.pixels[(4*x+y*500*4+1) as usize] = color.y as u8;
+                        self.pixels[(4*x+y*500*4+2) as usize] = color.z as u8;
+                        self.pixels[(4*x+y*500*4+3) as usize] = 255;
+                    }
+                    Err(_) => {
+                        println!("{:?}", "Error!");
+                        //break;
+                    }
+                }
+            }        
+        });
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
         
         //println!("{:?}",frame_nr());
-        //frame.request_repaint();
-
-
+        //ctx.request_repaint();
+        
+        
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some((size, texture)) = self.texture {
+                let Some((size, texture)) = self.texture else {panic!()};
                 //ui.heading("This is an image:");
                 ui.style_mut().spacing.slider_width = size.0 as f32;
                 ui.image(texture, egui::Vec2::new(size.0 as f32, size.1 as f32));
@@ -149,21 +173,19 @@ impl epi::App for MyApp {
                         let mut rng = rand::thread_rng();
                         let x = rng.gen_range(0..size.0);
                         let y = rng.gen_range(0..size.1);
-                        let computation = thread::spawn(move|| {
-                            // Some expensive computation.
-                            //let duration = Duration::seconds(0)
-                            //    .to_std()
-                            //    .expect("What is this text?");
-                            //thread::sleep(duration);
-                            return calculation(x, y, size)
-                        });
 
-                        let result = computation.join().unwrap();
+                        //thread::spawn(move || {
+                        //    tx.send(calculation(x, y, size)).unwrap();
+                        //});
+
+                        //let computation = thread::spawn(move|| {
+                        //    // Some expensive computation.
+                        //    return calculation(x, y, size)
+                        //});
+
+                        //let result = computation.unwrap();//.join().unwrap();
                         //println!("{:?}",result);
-                        self.pixels[(4*x+y*500*4+0) as usize] = result.x as u8;
-                        self.pixels[(4*x+y*500*4+1) as usize] = result.y as u8;
-                        self.pixels[(4*x+y*500*4+2) as usize] = result.z as u8;
-                        self.pixels[(4*x+y*500*4+3) as usize] = 255;
+                        
                         
                         //let mut thread_test = My::new(Vec3{x:0.0, y:0.0, z:0.0});
 	                    //thread_test.start();
@@ -209,7 +231,7 @@ impl epi::App for MyApp {
                 //println!("{:?}", self.gamma)
                 //ui.heading("This is an image you can click:");
                 //ui.add(egui::ImageButton::new(texture, size));
-            }
+            //}
         }
         //let Self { name, age } = self;
 
@@ -233,8 +255,6 @@ impl epi::App for MyApp {
 }
 
 fn main() {
-    
-
     let options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(MyApp::default()), options);
 }
