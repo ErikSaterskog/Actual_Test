@@ -1,6 +1,7 @@
 use eframe::{egui, epi};
 use chrono::Duration;
 use ::egui::Context;
+use crate::egui::TextureId;
 //use ::egui::mutex::Mutex;
 use rand::Rng;
 use std::sync::mpsc::Receiver;
@@ -28,17 +29,19 @@ struct MyApp {
     rx: std::sync::mpsc::Receiver<(usize, usize, Vec3)>,
 }
 
+
+
 impl Default for MyApp {
     fn default() -> Self {
-        Self {
-            //Dont know how to remove these errors..
+        let (tx, rx) = std::sync::mpsc::channel();
+        MyApp {
             pixels: vec![0],
-            texture: Option<((1, 1), eframe::egui::TextureId)>,
+            texture: std::option::Option::Some(((0 as usize,0 as usize),TextureId::User(0))),
             gamma: 100,
             var2: 0.0,
             calculating: false,
-            tx: Sender<(0, 0, Vec3{x:0.0, y:0.0, z:0.0})>,
-            rx: std::sync::mpsc::Receiver(0, 0, Vec3{x:0.0, y:0.0, z:0.0}),
+            tx,
+            rx,
         }
     }
 }
@@ -67,16 +70,12 @@ impl epi::App for MyApp {
             frame: &mut epi::Frame<'_>,
             _storage: Option<&dyn epi::Storage>,
         ) {
-        //let (tx, rx) = channel();
-        // Load the image: //First frame i guess?
+        
         let image_data = include_bytes!("test_large.png");
-        //use image::GenericImageView;
         let image = image::load_from_memory(image_data).expect("Failed to load image");
         let image_buffer = image.to_rgba8();
         let size = (image.width() as usize, image.height() as usize);
         self.pixels = image_buffer.into_vec();
-        //println!("{:?}",size);
-        //println!("{:?}",self.pixels.len());
         assert_eq!(size.0 * size.1 * 4, self.pixels.len());
         let pixels: Vec<_> = self.pixels
             .chunks_exact(4)
